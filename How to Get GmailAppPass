@@ -1,0 +1,7 @@
+Google Account-এর normal password দেওয়া যাবে না। একটি App Password তৈরি করতে হবে:
+1. Google Account Security খুলুন।
+2. 2-Step Verification চালু করুন।
+3. এরপর App Passwords খুলুন।
+4. App-এর নাম দিন, যেমন Email OTP Project।
+5. Google যে ১৬-character password দেবে সেটি copy করুন।
+6. .env-এ বসান:

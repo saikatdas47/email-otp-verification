@@ -1,0 +1,18 @@
+:root { color-scheme: light; font-family: Inter, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f7fb; color: #172033; padding: 20px; }
+.card { width: min(100%, 520px); background: white; border-radius: 18px; padding: 32px; box-shadow: 0 18px 50px rgba(32, 52, 90, .12); }
+h1 { margin: 0 0 8px; }
+.intro { margin: 0 0 24px; color: #5c667a; }
+form { display: grid; gap: 10px; margin-top: 18px; }
+label { font-weight: 650; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+input { width: 100%; border: 1px solid #cbd3df; border-radius: 10px; padding: 12px 14px; font: inherit; }
+input:focus { outline: 3px solid #dbe7ff; border-color: #356ae6; }
+button { border: 0; border-radius: 10px; padding: 12px 18px; background: #2459d3; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+.hidden { display: none; }
+#message { min-height: 24px; margin: 18px 0 0; font-weight: 650; }
+#message.success { color: #08783e; }
+#message.error { color: #b42318; }
+@media (max-width: 480px) { .row { grid-template-columns: 1fr; } .card { padding: 24px; } }

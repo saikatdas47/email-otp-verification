@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email OTP Verification</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Email verification</h1>
+    <p class="intro">Enter your email to receive a six-digit confirmation code.</p>
+
+    <form id="email-form">
+      <label for="email">Email address</label>
+      <div class="row">
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@gmail.com" required>
+        <button type="submit">Send code</button>
+      </div>
+    </form>
+
+    <form id="otp-form" class="hidden">
+      <label for="otp">Confirmation code</label>
+      <input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required>
+      <button type="submit">Verify email</button>
+    </form>
+
+    <p id="message" role="status" aria-live="polite"></p>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
