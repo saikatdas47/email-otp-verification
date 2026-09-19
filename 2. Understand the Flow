@@ -1,0 +1,237 @@
+এই project-এর flow হলো:
+User email দেয়
+   ↓
+Frontend /api/otp/send call করে
+   ↓
+Server OTP তৈরি করে
+   ↓
+OTP hash করে memory-তে রাখে
+   ↓
+Nodemailer Gmail দিয়ে OTP পাঠায়
+   ↓
+User code দেয়
+   ↓
+Frontend /api/otp/verify call করে
+   ↓
+Server একইভাবে hash করে মিলায়
+   ↓
+সঠিক হলে verified message দেখায়
+১. src/server.js
+এটাই application-এর entry point।
+require("dotenv").config();
+.env file-এর values process-এর মধ্যে আনে:
+EMAIL_USER
+EMAIL_APP_PASSWORD
+OTP_SECRET
+PORT
+তারপর mailer তৈরি করে:
+const sendOtpEmail = createMailer({
+  user: process.env.EMAIL_USER,
+  appPassword: process.env.EMAIL_APP_PASSWORD,
+  fromName: process.env.EMAIL_FROM_NAME
+});
+এরপর Express app তৈরি হয়:
+const app = createApp({
+  sendOtpEmail,
+  otpSecret: process.env.OTP_SECRET
+});
+সবশেষে server চালু হয়:
+app.listen(port, () => {
+  console.log(`Email OTP app is running at http://localhost:${port}`);
+});
+যদি OTP_SECRET না থাকে বা ১৬ character-এর ছোট হয়, server শুরুই হবে না।
+২. src/mailer.js
+এই file Gmail SMTP configuration করে।
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user,
+    pass: appPassword
+  }
+});
+এখানে:
+- user = Gmail address
+- pass = Gmail App Password
+তারপর sendOtpEmail() function email পাঠায়:
+await transporter.sendMail({
+  from: "...",
+  to: email,
+  subject: "Your email verification code",
+  text: "...",
+  html: "..."
+});
+এই function OTP return করে না। শুধু email পাঠায়।
+৩. src/app.js
+এখানেই মূল OTP logic আছে।
+Email normalize
+const email = normalizeEmail(req.body?.email);
+এটি email-এর:
+- শুরু/শেষের space বাদ দেয়
+- uppercase-কে lowercase করে
+যেমন:
+ Test@Example.com
+হয়ে যায়:
+test@example.com
+Email validation
+isValidEmail(email)
+দেখে email format ঠিক আছে কি না।
+৪. /api/otp/send
+Frontend যখন “Send code” button চাপবে, এই route call হবে:
+app.post("/api/otp/send", async (req, res) => {
+প্রথমে email নেওয়া হয়:
+const email = normalizeEmail(req.body?.email);
+তারপর validation:
+if (!isValidEmail(email)) {
+  return res.status(400).json({
+    success: false,
+    message: "Enter a valid email address."
+  });
+}
+Resend cooldown
+আগে code পাঠানো হয়ে থাকলে ১ মিনিটের মধ্যে আবার পাঠাতে দেয় না:
+if (existing && now() - existing.sentAt < RESEND_COOLDOWN_MS)
+এতে email spam কমে।
+OTP তৈরি
+const otp = String(randomInt(100000, 1000000));
+এখানে ৬ সংখ্যার code তৈরি হয়:
+483921
+OTP hash
+OTP সরাসরি memory-তে রাখা হয় না:
+hashOtp(email, otp, otpSecret)
+এই function HMAC-SHA256 ব্যবহার করে:
+crypto.createHmac("sha256", secret)
+ধরা যাক OTP:
+483921
+Server memory-তে থাকে তার hash:
+a8f...long-hash...
+তাই memory leak হলেও আসল OTP সরাসরি পাওয়া যাবে না।
+OTP record সংরক্ষণ
+const record = {
+  hash,
+  expiresAt,
+  sentAt,
+  attempts: 0
+};
+এর মধ্যে থাকে:
+- hashed OTP
+- expiry time
+- code পাঠানোর সময়
+- কতবার ভুল code দেওয়া হয়েছে
+তারপর Gmail-এ email পাঠানো হয়:
+await sendOtpEmail({ email, otp });
+Email সফলভাবে পাঠানোর পর record memory-তে রাখা হয়:
+pendingOtps.set(email, record);
+API response-এ OTP নেই:
+{
+  success: true,
+  message: "A verification code was sent to your email."
+}
+৫. Frontend public/app.js
+User email submit করলে:
+emailForm.addEventListener("submit", async (event) => {
+এই function server-এ request পাঠায়:
+postJson("/api/otp/send", {
+  email: emailInput.value
+});
+সফল হলে OTP input form দেখায়:
+otpForm.classList.remove("hidden");
+এখন user email থেকে পাওয়া code input করতে পারে।
+৬. /api/otp/verify
+User OTP submit করলে এই route call হয়:
+app.post("/api/otp/verify", (req, res) => {
+Email এবং OTP নেয়:
+const email = normalizeEmail(req.body?.email);
+const otp = String(req.body?.otp || "").trim();
+তারপর format check:
+if (!isValidEmail(email) || !isValidOtp(otp))
+isValidOtp() নিশ্চিত করে code ঠিক ৬ সংখ্যার কি না:
+/^\d{6}$/
+৭. Stored record খোঁজা
+const record = pendingOtps.get(email);
+যদি কোনো active OTP না থাকে:
+return res.status(400).json({
+  message: "No active code was found. Request a new one."
+});
+৮. Expiration check
+if (now() > record.expiresAt)
+৫ মিনিট পার হলে:
+pendingOtps.delete(email);
+তারপর response:
+The code has expired. Request a new one.
+৯. OTP মিলানো
+User যে OTP দিয়েছে সেটিও একই secret দিয়ে hash করা হয়:
+hashOtp(email, otp, otpSecret)
+তারপর stored hash-এর সঙ্গে compare হয়:
+safeEqualHex(record.hash, newHash)
+crypto.timingSafeEqual() ব্যবহার করা হয়েছে যাতে comparison timing থেকে security leak না হয়।
+১০. ভুল OTP attempt limit
+প্রতিবার verify করার সময়:
+record.attempts += 1;
+৫ বার ভুল হলে record delete হয়:
+pendingOtps.delete(email);
+তারপর নতুন code চাইতে হবে।
+১১. সঠিক OTP হলে
+সঠিক হলে প্রথমে record delete হয়:
+pendingOtps.delete(email);
+এটাই single-use behavior।
+তারপর response যায়:
+{
+  success: true,
+  verified: true,
+  message: "Email authenticated and verified successfully!"
+}
+Frontend এই message দেখায় এবং form বন্ধ করে দেয়:
+otpForm.classList.add("hidden");
+emailInput.disabled = true;
+একই code দ্বিতীয়বার দিলে আর কাজ করবে না।
+১২. public/index.html
+এটি user interface:
+- Email input
+- Send code button
+- OTP input
+- Verify email button
+- Status message
+<form id="email-form">
+Email form।
+<form id="otp-form" class="hidden">
+OTP form শুরুতে hidden থাকে। Server email পাঠালে JavaScript এটিকে দেখায়।
+১৩. public/styles.css
+শুধু frontend design:
+- card layout
+- input styling
+- button styling
+- success/error color
+- mobile responsive layout
+এখানে কোনো authentication logic নেই।
+১৪. test/app.test.js
+এই file automated test চালায়।
+এখানে real Gmail ব্যবহার করা হয় না। Fake mailer ব্যবহার হয়:
+sendOtpEmail: async (payload) => {
+  sent = payload;
+}
+Test করে:
+- OTP পাঠানোর response-এ আসল code নেই
+- সঠিক OTP verify হয়
+- verify করার পর একই OTP দ্বিতীয়বার কাজ করে না
+- ৫ মিনিট পর OTP expired হয়
+পুরো request flow
+Send code
+Browser
+  → POST /api/otp/send
+  → validate email
+  → generate OTP
+  → hash OTP
+  → send Gmail
+  → save hash in memory
+  → return success
+Verify code
+Browser
+  → POST /api/otp/verify
+  → validate email and OTP
+  → find stored hash
+  → check expiration
+  → hash submitted OTP
+  → compare hashes
+  → delete record
+  → show verified message
+একটি গুরুত্বপূর্ণ বিষয়: এই project-এ OTP data memory-তে থাকে। তাই server restart করলে সব pending OTP মুছে যায়। Production version-এ পরে Redis বা MongoDB ব্যবহার করা যাবে।
